@@ -2562,16 +2562,18 @@ function loadAndRenderPaises() {
   });
 }
 
-// Modelo/Lote (PS2!D2), Início (PS2!J2), Previsto (PS2!F2) e estado (PS2!A2).
+// Início (PA1!J1) e Previsto (PA1!F1); modelo/lote e estado vêm de PS2.
 function refreshPs1Details() {
   const DATE_PLACEHOLDER = '-- / -- / ----';
 
-  return fetchSecondaryRowFields('PS2', {
-    inicio: { header: 'INÍCIO SOLDADURA / ACABAMENTO', column: 'J' },
-    previsto: { header: 'DATA PRETENDIDA', column: 'F' },
-    modeloLote: { header: 'LOTE', column: 'D' },
-    chaveProcura: { header: 'Chave de Procura', column: 'A' },
-  }).then(({ inicio, previsto, modeloLote, chaveProcura }) => {
+  return Promise.all([
+    fetchSecondaryRangeValue('PA1', 'J1:J10'),
+    fetchSecondaryRangeValue('PA1', 'F1:F10'),
+    fetchSecondaryRowFields('PS2', {
+      modeloLote: { header: 'LOTE', column: 'D' },
+      chaveProcura: { header: 'Chave de Procura', column: 'A' },
+    }),
+  ]).then(([inicio, previsto, { modeloLote, chaveProcura }]) => {
     const inicioFmt = inicio != null && String(inicio).trim() !== ''
       ? formatSheetDate(inicio) || DATE_PLACEHOLDER
       : DATE_PLACEHOLDER;
@@ -2587,7 +2589,7 @@ function refreshPs1Details() {
 
     updateStatus(chaveProcura);
   }).catch(err => {
-    console.warn('Falha a carregar dados do PS2:', err);
+    console.warn('Falha a carregar datas do PA1 ou dados do PS2:', err);
     modelDataAvailable = false;
     loadAndRenderPaises();
     renderText(dataInicioEl, DATE_PLACEHOLDER, DATE_PLACEHOLDER);
@@ -2600,7 +2602,7 @@ function refreshPs1Details() {
 function renderSheetData(sheetRow) {
   if (!sheetRow) return;
 
-  // Modelo, Lote e datas vêm do PS2 (refreshPs1Details)
+  // Datas vêm do PA1 e modelo/lote vêm do PS2 (refreshPs1Details)
   // Evolução Global vem do PS2!AK (refreshPs1Fields)
   // Países vêm de montagemEditável (refrescados pelo seu próprio watcher — ver loadAndRenderPaises)
   refreshPs1Details();
