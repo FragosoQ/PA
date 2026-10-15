@@ -1971,9 +1971,8 @@ const PA1_PRIORITY_HEADERS = [
 // Cache simples para a lista de lotes — partilhado pelo refresh periódico
 const ZONA_LIST_CACHE = {};
 
-// Modelo+Lote actual (vindo do PS2!D2). Actualizado por refreshPs1Details.
-// Usado para destacar o item correspondente nas listas (ex: Planeamento).
-let currentModeloLote = null;
+// Modelo+Lote carregados de PA1!D e usados para destacar Planeamento.
+let currentModeloLotes = new Set();
 
 // Normaliza uma string para comparação de "modelo - lote":
 // minúsculas, sem espaços extra à volta do "-", sem acentos.
@@ -1986,13 +1985,11 @@ function normalizeModeloLote(str) {
     .trim();
 }
 
-// Percorre todos os itens das listas no DOM e marca como .active aqueles
-// que correspondem ao modelo+lote actual. Idempotente — pode ser chamada
-// quantas vezes for preciso.
+// Marca como .active os itens que correspondem aos modelos+lotes carregados.
+// Idempotente — pode ser chamada quantas vezes for preciso.
 function applyActiveHighlight() {
-  const target = currentModeloLote ? normalizeModeloLote(currentModeloLote) : null;
   document.querySelectorAll('.zona-card-list-item').forEach(el => {
-    const match = target && normalizeModeloLote(el.textContent) === target;
+    const match = currentModeloLotes.has(normalizeModeloLote(el.textContent));
     el.classList.toggle('active', !!match);
   });
 }
@@ -2471,17 +2468,21 @@ function loadAndRenderModelo() {
       .map(row => getValueFromRow(row, 0))
       .filter(value => value != null && String(value).trim() !== '')
       .map(value => String(value).trim());
+    currentModeloLotes = new Set(values.map(normalizeModeloLote));
     modelEl.classList.toggle('is-list', values.length > 1);
     modelEl.textContent = values.length ? values.join('\n') : MODEL_PLACEHOLDER;
     const lote = values.length ? values[0].match(/-\s*(\d{2}L)$/i)?.[1] : null;
     if (loteEl) {
       loteEl.innerHTML = lote ? `Lote &nbsp;·&nbsp; ${escapeHtml(lote)}` : 'Sem Lote';
     }
+    applyActiveHighlight();
   }).catch(error => {
     console.warn('Falha a carregar valores de LOTE em PA1:', error);
+    currentModeloLotes = new Set();
     modelEl.classList.remove('is-list');
     modelEl.textContent = MODEL_PLACEHOLDER;
     if (loteEl) loteEl.textContent = 'Sem Lote';
+    applyActiveHighlight();
   });
 }
 
@@ -2565,19 +2566,6 @@ function loadAndRenderPaises() {
 function refreshPs1Details() {
   const DATE_PLACEHOLDER = '-- / -- / ----';
 
-  // Separa "MWS500 SDS - 87L" → { modelo: "MWS500 SDS", lote: "87L" }.
-  // Se não terminar em "<2 dígitos>L", devolve { modelo: <string toda>, lote: null }.
-  function parseModeloLote(raw) {
-    const text = raw == null ? '' : String(raw).trim();
-    if (text === '' || /^[-–—]+$/.test(text)) return { modelo: '', lote: null };
-    // Padrão: começa pela parte do modelo, segue " - " (espaços flexíveis), 2 dígitos + L no fim
-    const m = text.match(/^(.*?)\s*-\s*(\d{2}L)$/);
-    if (m) {
-      return { modelo: m[1].trim(), lote: m[2] };
-    }
-    return { modelo: text, lote: null };
-  }
-
   return fetchSecondaryRowFields('PS2', {
     inicio: { header: 'INÍCIO SOLDADURA / ACABAMENTO', column: 'J' },
     previsto: { header: 'DATA PRETENDIDA', column: 'F' },
@@ -2594,12 +2582,8 @@ function refreshPs1Details() {
     renderText(dataPrevistaEl, previstoFmt, DATE_PLACEHOLDER);
     updateDeadline(inicio, previsto);
 
-    const { modelo, lote } = parseModeloLote(modeloLote);
-    modelDataAvailable = Boolean(modelo);
+    modelDataAvailable = modeloLote != null && String(modeloLote).trim() !== '';
     loadAndRenderPaises();
-    // Actualiza referência usada pelas listas para destacar o item activo
-    currentModeloLote = (modelo && lote) ? `${modelo} - ${lote}` : null;
-    applyActiveHighlight();
 
     updateStatus(chaveProcura);
   }).catch(err => {
@@ -2610,8 +2594,6 @@ function refreshPs1Details() {
     renderText(dataPrevistaEl, DATE_PLACEHOLDER, DATE_PLACEHOLDER);
     updateDeadline(null, null);
     updateStatus(null);
-    currentModeloLote = null;
-    applyActiveHighlight();
   });
 }
 
@@ -2627,23 +2609,20 @@ function renderSheetData(sheetRow) {
 }
 
 async function fetchPs1Summary() {
-  const table = await fetchSecondaryTable('PS2');
-  const row = table && Array.isArray(table.rows) ? table.rows[0] : null;
-  const index = findSheetCell(table, 'GERAL', 'AK');
-  return index >= 0 ? getValueFromRow(row, index) : null;
+  return fetchSecondaryRangeValue('PA1', 'AK1:AK1000');
 }
 
 function refreshPs1Fields() {
   return fetchPs1Summary().then(geral => {
     const geralPct = parseSheetPercentage(geral);
     if (geralPct == null) {
-      console.warn('[evolução] valor de GERAL (PS2!AK2) não parseável:', geral);
+      console.warn('[evolução] valor de GERAL (PA1!AK) não parseável:', geral);
     } else {
-      console.log('[evolução] GERAL (PS2!AK2) =', geral, '→', geralPct, '%');
+      console.log('[evolução] GERAL (PA1!AK) =', geral, '→', geralPct, '%');
     }
     updateEvolucao(geralPct != null ? geralPct : 0);
   }).catch(err => {
-    console.warn('Falha a carregar evolução do PS2:', err);
+    console.warn('Falha a carregar evolução do PA1:', err);
     updateEvolucao(0);
   });
 }
