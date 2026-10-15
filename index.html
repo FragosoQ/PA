@@ -2471,9 +2471,13 @@ function loadAndRenderModelo() {
     currentModeloLotes = new Set(values.map(normalizeModeloLote));
     modelEl.classList.toggle('is-list', values.length > 1);
     modelEl.textContent = values.length ? values.join('\n') : MODEL_PLACEHOLDER;
-    const lote = values.length ? values[0].match(/-\s*(\d{2}L)$/i)?.[1] : null;
+    const lotes = [...new Set(values
+      .map(value => value.match(/-\s*(\d{2}L)$/i)?.[1])
+      .filter(Boolean))];
     if (loteEl) {
-      loteEl.innerHTML = lote ? `Lote &nbsp;·&nbsp; ${escapeHtml(lote)}` : 'Sem Lote';
+      loteEl.innerHTML = lotes.length
+        ? `${lotes.length === 1 ? 'Lote' : 'Lotes'} &nbsp;·&nbsp; ${lotes.map(escapeHtml).join(', ')}`
+        : 'Sem Lote';
     }
     applyActiveHighlight();
   }).catch(error => {
