@@ -448,6 +448,12 @@ main {
   text-align: left;
   padding: 0 2px;
 }
+.zona-card-list-items.is-scrollable-list {
+  grid-template-rows: none;
+  grid-auto-rows: min-content;
+  align-content: start;
+  overflow-y: auto;
+}
 .zona-card-list-item {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: calc(clamp(23px, 1.7vh, 18px) * 1.1);
@@ -489,7 +495,7 @@ main {
   font-style: italic;
 }
 
-/* Variante: card com um único valor centrado (ex: Próxima Prioridade) */
+/* Variante: card com um único valor centrado */
 .zona-card.single {
   justify-content: space-between;
 }
@@ -582,51 +588,6 @@ main {
 .prazo-div { font-size: clamp(24px, 3.6vh, 36px); color: rgba(255,255,255,0.4); font-weight: 300; }
 .prazo-total { font-size: clamp(32px, 4.8vh, 48px); color: #fff; font-weight: 300; letter-spacing: -1px; }
 .prazo-unit { font-size: clamp(14px, 1.8vh, 18px); letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,0.75); align-self: flex-end; padding-bottom: clamp(6px, 1vh, 10px); }
-
-/* Faixa "Prioridade em Curso" no fundo da secção de evolução */
-.prio-curso {
-  align-self: stretch;
-  margin-top: auto;
-  padding: clamp(6px, 1vh, 12px) clamp(10px, 1.5vw, 18px) 0;
-  border-top: 1px solid rgba(255,255,255,0.1);
-}
-.prio-curso.is-empty .prio-curso-name,
-.prio-curso.is-empty .prio-curso-pct { color: rgba(255,255,255,0.4); }
-.prio-curso.is-empty .prio-curso-pct small { display: none; }
-.prio-curso-top {
-  display: flex; align-items: flex-end; justify-content: space-between;
-  margin-bottom: clamp(4px, 0.6vh, 8px);
-}
-.prio-curso-label {
-  font-size: clamp(11px, 1.5vh, 16px);
-  font-weight: 700; letter-spacing: 3px;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.6);
-}
-.prio-curso-name {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(16px, 2.2vh, 24px);
-  letter-spacing: 1px; line-height: 1.1;
-  color: #fff;
-}
-.prio-curso-pct {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(30px, 4.6vh, 56px);
-  line-height: .9;
-  color: #00d4ff;
-}
-.prio-curso-pct small { font-size: .55em; }
-.prio-curso-track {
-  height: clamp(4px, 0.6vh, 7px);
-  background: rgba(255,255,255,0.12);
-  border-radius: 4px; overflow: hidden;
-}
-.prio-curso-bar {
-  height: 100%; width: 0;
-  border-radius: 4px;
-  background: #00ff87;
-  transition: width .6s ease;
-}
 
 .prazo-track {
   height: clamp(8px, 1.2vh, 12px);
@@ -960,25 +921,9 @@ footer {
 
       <!-- EVOLUÇÃO -->
       <div class="globe-section" style="flex-direction:column;gap:clamp(6px,1vh,10px);position:relative;">
-        <div class="h-priority h-priority-left" id="prioridadeAtiva">
-          <span class="h-priority-label">Prioridade Ativa</span>
-          <span class="h-priority-value" id="prioridadeAtivaValue">—</span>
-        </div>
         <div style="margin-top:auto;font-size:clamp(14px,1.8vh,20px);font-weight:700;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.75);">Evolução Global</div>
         <div id="evNum" style="font-family:'Bebas Neue',sans-serif;font-size:clamp(140px,22vh,340px);line-height:.85;letter-spacing:-2px;">46%</div>
         <div id="statusLabel" style="font-size:clamp(15px,2vh,22px);letter-spacing:4px;color:rgba(255,255,255,0.75);text-transform:uppercase;">Em Curso · ON</div>
-        <div class="prio-curso" id="prioCurso">
-          <div class="prio-curso-top">
-            <div>
-              <div class="prio-curso-label">Prioridade em Curso</div>
-              <div class="prio-curso-name" id="prioCursoName">—</div>
-            </div>
-            <div class="prio-curso-pct"><span id="prioCursoPct">0</span><small>%</small></div>
-          </div>
-          <div class="prio-curso-track">
-            <div class="prio-curso-bar" id="prioCursoBar"></div>
-          </div>
-        </div>
       </div>
 
       <!-- PRAZO -->
@@ -1170,6 +1115,20 @@ function parseSheetPercentage(value) {
   const numeric = Number(numericMatch[1]);
   const pct = numeric <= 1 ? numeric * 100 : numeric;
   return Math.round(pct);
+}
+
+function isSheetPercentageComplete(value) {
+  if (value == null || String(value).trim() === '') return false;
+  if (typeof value === 'number') return value === 1 || value === 100;
+
+  const text = String(value).trim().replace(/\s+/g, '');
+  const percentMatch = text.match(/^(-?\d+(?:[\.,]\d+)?)%$/);
+  if (percentMatch) {
+    return Number(percentMatch[1].replace(',', '.')) === 100;
+  }
+
+  const numeric = Number(text.replace(',', '.'));
+  return numeric === 1 || numeric === 100;
 }
 
 function parseSheetDate(value) {
@@ -1978,28 +1937,31 @@ const ZONA_CONFIGS = [
     nome: 'Histórico',
     type: 'list',
     listSource: {
-      tab: 'PS2',
-      mode: 'row-headers',
-      startColumn: 'AL',
-      endColumn: 'CE',
-      ignoreLabels: ['%'],
+      tab: 'PA1',
+      range: 'DW1:FV18',
+      mode: 'completed-priorities',
       hideHeader: true,
       gridLayout: { cols: 4, rows: 3, flow: 'column' },
-      matchValue: 2,
-      limit: 12,
     },
   },
   { nome: 'Envolventes', tab: 'PS2', header: 'Envolventes', column: 'R' },
   { nome: 'Interior', tab: 'PS2', header: 'INTERIOR', column: 'Q' },
   {
-    nome: 'Próxima Prioridade',
-    type: 'single',
-    singleSource: {
-      tab: 'PS2',
-      header: 'Próxima Prioridade',
-      column: 'CH',
+    nome: 'Prioridades Disponíveis',
+    type: 'list',
+    listSource: {
+      tab: 'PA1',
+      range: 'AL1:CK8',
+      mode: 'completed-priority-headers',
+      hideHeader: true,
     },
   },
+];
+
+const PA1_PRIORITY_HEADERS = [
+  'P0_1', 'P0_2', 'P0_3', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6',
+  'P7_1', 'P7_2', 'P8', 'P9', 'P10', 'P11_1', 'P11_2', 'P11_3',
+  'P12_1', 'P12_2', 'P12_3', 'P13_1', 'P13_2', 'P13_3', 'V', 'FE', 'ESP',
 ];
 
 // Cache simples para a lista de lotes — partilhado pelo refresh periódico
@@ -2137,12 +2099,56 @@ async function fetchSecondaryRowsRange(tab, columns, startRow, endRow) {
 // Modo "row-headers": lê os labels do cabeçalho (linha 1) das colunas entre
 // `startColumn` e `endColumn`, e devolve só aqueles cuja célula da linha 2
 // não está vazia. Útil para mostrar "que postos estão activos agora".
+// Modo "completed-priorities": lê o cabeçalho e procura percentagens concluídas
+// no intervalo, devolvendo o valor imediatamente à esquerda de cada uma.
+// Modo "completed-priority-headers": devolve todos os cabeçalhos cuja
+// percentagem esteja concluída.
 async function fetchZonaListValues(source) {
   const cfg = {
     id: SHEET_CONFIG_DEFAULT.id,
     tab: source.tab,
+    ...(source.range ? { range: source.range } : {}),
   };
   const table = await fetchSheetTable(cfg);
+
+  if (source.mode === 'completed-priorities' || source.mode === 'completed-priority-headers') {
+    if (!table || !Array.isArray(table.cols) || !Array.isArray(table.rows) || !table.rows[0]) {
+      return [];
+    }
+
+    // PA1 uses fixed priority/% pairs; gviz can return blank cells for merged headers.
+    const percentageColumns = PA1_PRIORITY_HEADERS
+      .map((_, index) => index * 2 + 1)
+      .filter(index => index < table.cols.length);
+
+    if (source.mode === 'completed-priority-headers') {
+      const values = [];
+      for (const percentageColumn of percentageColumns) {
+        const completed = table.rows.slice(1).some(row =>
+          isSheetPercentageComplete(getValueFromRow(row, percentageColumn))
+        );
+        if (!completed) continue;
+
+        const priorityHeader = PA1_PRIORITY_HEADERS[(percentageColumn - 1) / 2];
+        if (!priorityHeader) continue;
+        values.push(priorityHeader.replace(/_(?=\d+$)/, '.'));
+      }
+      return values;
+    }
+
+    const values = [];
+    for (let rowIndex = 1; rowIndex < table.rows.length; rowIndex += 1) {
+      const row = table.rows[rowIndex];
+      for (const percentageColumn of percentageColumns) {
+        if (!isSheetPercentageComplete(getValueFromRow(row, percentageColumn))) continue;
+        const priority = getValueFromRow(row, percentageColumn - 1);
+        if (priority == null || String(priority).trim() === '') continue;
+        const priorityText = String(priority).trim().replace(',', '.');
+        values.push(/^p/i.test(priorityText) ? priorityText : `P${priorityText}`);
+      }
+    }
+    return values;
+  }
 
   if (source.mode === 'row-headers') {
     if (!table || !Array.isArray(table.cols) || !Array.isArray(table.rows) || !table.rows[0]) {
@@ -2260,9 +2266,15 @@ function buildZonaListCard(config, items) {
   let itemsClass = 'zona-card-list-items';
   let itemsStyle = '';
   if (src.gridLayout) {
-    const { cols = 3, rows = 4, flow = 'row' } = src.gridLayout;
+    const { cols = 3, rows: defaultRows = 4, flow = 'row' } = src.gridLayout;
+    const rows = src.mode === 'completed-priorities'
+      ? Math.max(defaultRows, Math.ceil(list.length / cols))
+      : defaultRows;
     itemsClass += ' is-grid-list';
     itemsStyle = ` style="--grid-cols:${cols};--grid-rows:${rows};grid-auto-flow:${flow === 'column' ? 'column' : 'row'};"`;
+  } else if (src.mode === 'completed-priority-headers') {
+    itemsClass += ' is-grid-list is-scrollable-list';
+    itemsStyle = ' style="--grid-cols:4;grid-auto-flow:row;"';
   }
 
   card.innerHTML = `
@@ -2290,6 +2302,10 @@ function renderZones(rowData) {
       const src = config.listSource || {};
       const cacheKey = src.mode === 'row-headers'
         ? `list|${src.tab}|rowheaders|${src.startColumn}-${src.endColumn}`
+        : src.mode === 'completed-priorities'
+          ? `list|${src.tab}|${src.mode}|${src.range}`
+          : src.mode === 'completed-priority-headers'
+            ? `list|${src.tab}|${src.mode}|${src.range}`
         : `list|${src.tab}|${src.column || src.header}`;
       const cached = ZONA_LIST_CACHE[cacheKey];
       const card = buildZonaListCard(config, cached);
@@ -2305,7 +2321,7 @@ function renderZones(rowData) {
         .catch(err => console.warn(`Falha a carregar lista para "${config.nome}":`, err));
     } else if (config.type === 'single') {
       const src = config.singleSource || {};
-      const cacheKey = `single|${src.tab}|${src.column || src.header}`;
+      const cacheKey = `single|${src.tab}|${src.mode || ''}|${src.range || src.column || src.header}`;
       const cached = ZONA_LIST_CACHE[cacheKey];
       const card = buildZonaSingleCard(config, cached);
       zg.appendChild(card);
@@ -2574,68 +2590,15 @@ function renderSheetData(sheetRow) {
   renderZones(sheetRow);
 }
 
-function getPs1ActivePriorityPercentage(table, row, activePriority) {
-  const priorityNumber = Number(String(activePriority == null ? '' : activePriority).trim());
-  if (!Number.isInteger(priorityNumber) || priorityNumber < 1) return null;
-
-  const startIndex = columnLetterToIndex('AL');
-  const endIndex = columnLetterToIndex('CE');
-  const targetHeader = normalizeString(`P${priorityNumber}`);
-  for (let index = startIndex; index <= endIndex && index + 1 < table.cols.length; index += 1) {
-    const header = normalizeString(table.cols[index].label || table.cols[index].id || '');
-    if (header !== targetHeader) continue;
-
-    const percentageHeader = normalizeString(table.cols[index + 1].label || table.cols[index + 1].id || '');
-    if (percentageHeader !== '%') return null;
-
-    const rawPercentage = getValueFromRow(row, index + 1);
-    if (rawPercentage == null || String(rawPercentage).trim() === '') return null;
-    const percentage = parseSheetPercentage(rawPercentage);
-    return percentage != null && percentage !== 100 ? percentage : null;
-  }
-  return null;
-}
-
 async function fetchPs1Summary() {
   const table = await fetchSecondaryTable('PS2');
   const row = table && Array.isArray(table.rows) ? table.rows[0] : null;
-  const readValue = (header, column) => {
-    const index = findSheetCell(table, header, column);
-    return index >= 0 ? getValueFromRow(row, index) : null;
-  };
-  const prioridadeAtiva = readValue('Posto2', 'CP');
-  return {
-    prioridadeAtiva,
-    prioridadeAtivaPct: getPs1ActivePriorityPercentage(table, row, prioridadeAtiva),
-    geral: readValue('GERAL', 'AK'),
-  };
-}
-
-// Faixa "Prioridade em Curso": % de realização da prioridade ativa.
-// Fica escondida quando não há prioridade ativa ou % disponível.
-function updatePrioridadeEmCurso(prioridade, pct) {
-  const box = document.getElementById('prioCurso');
-  if (!box) return;
-  // Faixa sempre visível (espaço reservado); sem dados mostra "—" e barra vazia.
-  const hasPct = pct != null;
-  box.classList.toggle('is-empty', !prioridade || !hasPct);
-  const nameText = prioridade ? (/^\d+$/.test(prioridade) ? `P${prioridade}` : prioridade) : '—';
-  document.getElementById('prioCursoName').textContent = nameText;
-  document.getElementById('prioCursoPct').textContent = hasPct ? pct : '—';
-  document.getElementById('prioCursoBar').style.width = hasPct ? `${Math.max(0, Math.min(100, pct))}%` : '0%';
+  const index = findSheetCell(table, 'GERAL', 'AK');
+  return index >= 0 ? getValueFromRow(row, index) : null;
 }
 
 function refreshPs1Fields() {
-  return fetchPs1Summary().then(({ prioridadeAtiva, prioridadeAtivaPct, geral }) => {
-    const ativaBox = document.getElementById('prioridadeAtiva');
-    const ativaValueEl = document.getElementById('prioridadeAtivaValue');
-    const prioridade = prioridadeAtiva != null && String(prioridadeAtiva).trim() !== ''
-      ? String(prioridadeAtiva).trim()
-      : null;
-    if (ativaValueEl) ativaValueEl.textContent = prioridade || '—';
-    if (ativaBox) ativaBox.classList.toggle('is-empty', !prioridade);
-    updatePrioridadeEmCurso(prioridade, prioridadeAtivaPct);
-
+  return fetchPs1Summary().then(geral => {
     const geralPct = parseSheetPercentage(geral);
     if (geralPct == null) {
       console.warn('[evolução] valor de GERAL (PS2!AK2) não parseável:', geral);
@@ -2644,12 +2607,7 @@ function refreshPs1Fields() {
     }
     updateEvolucao(geralPct != null ? geralPct : 0);
   }).catch(err => {
-    console.warn('Falha a carregar prioridade ativa/evolução do PS2:', err);
-    const ativaBox = document.getElementById('prioridadeAtiva');
-    const ativaValueEl = document.getElementById('prioridadeAtivaValue');
-    if (ativaValueEl) ativaValueEl.textContent = '—';
-    if (ativaBox) ativaBox.classList.add('is-empty');
-    updatePrioridadeEmCurso(null, null);
+    console.warn('Falha a carregar evolução do PS2:', err);
     updateEvolucao(0);
   });
 }
