@@ -655,6 +655,97 @@ main {
 }
 
 /* ══════════════════════════════════════
+   MULTI-LOTE: quando há vários registos em MODELO / EQUIPAMENTO,
+   cada campo divide-se em N colunas (uma por lote, na mesma ordem).
+══════════════════════════════════════ */
+[hidden] { display: none !important; }
+
+.lot-cols {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
+  gap: clamp(6px, 0.8vw, 12px);
+  width: 100%;
+  min-width: 0;
+}
+.lot-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.lot-tag {
+  display: block;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(11px, 1.4vh, 15px);
+  font-weight: 700;
+  letter-spacing: 2px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--lot-color, rgba(255,255,255,0.7));
+  text-shadow: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Zonas (Cuba, Estrutura, Envolventes, Interior) */
+.zona-card .lot-cols { flex: 1; min-height: 0; align-items: center; }
+.zona-card .lot-col { gap: clamp(3px, 0.6vh, 6px); }
+.zona-card .lot-col .zona-card-pct {
+  font-size: clamp(22px, 3.8vh, 46px);
+  text-align: center;
+}
+
+/* Evolução Global */
+.globe-section { container-type: inline-size; }
+#evNum.is-multi {
+  width: 100%;
+  padding: 0 clamp(12px, 1.6vw, 22px);
+  box-sizing: border-box;
+  font-size: min(18vh, calc(88cqw / var(--cols, 1) / 2.1)) !important;
+  letter-spacing: 0 !important;
+}
+#evNum.is-multi .lot-col {
+  align-items: center;
+  padding-top: clamp(6px, 1vh, 12px);
+}
+
+/* Prazo */
+.prazo-multi .lot-col { align-items: center; gap: clamp(4px, 0.6vh, 8px); }
+.prazo-multi .prazo-numbers { margin-bottom: 0; gap: 4px; }
+.prazo-multi .prazo-used { font-size: clamp(30px, 5vh, 56px); }
+.prazo-multi .prazo-div { font-size: clamp(16px, 2.4vh, 26px); }
+.prazo-multi .prazo-total { font-size: clamp(20px, 3vh, 34px); }
+.prazo-multi .prazo-track { width: 100%; }
+.prazo-lot-folga {
+  font-size: clamp(11px, 1.4vh, 14px);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Início / Previsto */
+.details-section.is-multi .detail-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(3px, 0.5vh, 6px);
+}
+.details-section.is-multi .d-v .lot-col {
+  align-items: center;
+  font-size: clamp(13px, 1.7vh, 18px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ══════════════════════════════════════
    FOOTER
 ══════════════════════════════════════ */
 footer {
@@ -944,15 +1035,18 @@ footer {
           <span class="prazo-label">Prazo</span>
           <span class="prazo-folga" id="folgaSpan">—</span>
         </div>
-        <div class="prazo-numbers">
-          <div class="prazo-used" id="prazoUsed">6</div>
-          <div class="prazo-div">/</div>
-          <div class="prazo-total">8</div>
-          <div class="prazo-unit">dias</div>
+        <div id="prazoSingle">
+          <div class="prazo-numbers">
+            <div class="prazo-used" id="prazoUsed">6</div>
+            <div class="prazo-div">/</div>
+            <div class="prazo-total">8</div>
+            <div class="prazo-unit">dias</div>
+          </div>
+          <div class="prazo-track">
+            <div class="prazo-fill-bar" id="prazoBar"></div>
+          </div>
         </div>
-        <div class="prazo-track">
-          <div class="prazo-fill-bar" id="prazoBar"></div>
-        </div>
+        <div id="prazoMulti" class="prazo-multi lot-cols" hidden></div>
       </div>
 
       <!-- DETALHES -->
@@ -1935,8 +2029,8 @@ const statusEl = document.getElementById('statusLabel');
 const zg = document.getElementById('zonasGrid');
 
 const ZONA_CONFIGS = [
-  { nome: 'Cuba', tab: 'PA1', header: 'CUBA', column: 'O', range: 'O1:O10' },
-  { nome: 'Estrutura', tab: 'PA1', header: 'ESTRUTURA', column: 'P', range: 'P1:P10' },
+  { nome: 'Cuba', tab: 'PA1', header: 'CUBA', column: 'O', range: 'O1:O10', lotField: 'cuba' },
+  { nome: 'Estrutura', tab: 'PA1', header: 'ESTRUTURA', column: 'P', range: 'P1:P10', lotField: 'estrutura' },
   {
     nome: 'Planeamento',
     type: 'list',
@@ -1964,8 +2058,8 @@ const ZONA_CONFIGS = [
       gridLayout: { cols: 4, rows: 3, flow: 'column' },
     },
   },
-  { nome: 'Envolventes', tab: 'PA1', header: 'Envolventes', column: 'R', range: 'R1:R10' },
-  { nome: 'Interior', tab: 'PA1', header: 'INTERIOR', column: 'Q', range: 'Q1:Q10' },
+  { nome: 'Envolventes', tab: 'PA1', header: 'Envolventes', column: 'R', range: 'R1:R10', lotField: 'envolventes' },
+  { nome: 'Interior', tab: 'PA1', header: 'INTERIOR', column: 'Q', range: 'Q1:Q10', lotField: 'interior' },
   {
     nome: 'Prioridades Disponíveis',
     type: 'list',
@@ -1983,13 +2077,79 @@ const PA1_PRIORITY_HEADERS = [
   'P7_1', 'P7_2', 'P8', 'P9', 'P10', 'P11_1', 'P11_2', 'P11_3',
   'P12_1', 'P12_2', 'P12_3', 'P13_1', 'P13_2', 'P13_3', 'V', 'FE', 'ESP',
 ];
-const LOT_COLORS = ['#8fe7ff', '#', '#ffd28f', '#a8edb2', '#ffaec1', '#aebdff', '#ffe98f', '#a5e8d5'];
+const LOT_COLORS = ['#8fe7ff', '#ffffff', '#ffd28f', '#a8edb2', '#ffaec1', '#aebdff', '#ffe98f', '#a5e8d5'];
 const PA1_RANGE_START_COLUMN = columnLetterToIndex('D');
 const PA1_AVAILABLE_START_COLUMN = columnLetterToIndex('AL') - PA1_RANGE_START_COLUMN;
 const PA1_HISTORY_START_COLUMN = columnLetterToIndex('DW') - PA1_RANGE_START_COLUMN;
 
 // Cache simples para a lista de lotes — partilhado pelo refresh periódico
 const ZONA_LIST_CACHE = {};
+
+// ── Registos por lote (PA1, uma linha por MODELO / EQUIPAMENTO) ──
+// Quando há mais do que um lote em PA1!D, Cuba/Estrutura/Envolventes/Interior,
+// Evolução Global, Prazo, Início e Previsto dividem-se em N colunas, lidas da
+// mesma linha de cada lote e pela mesma ordem da lista de Modelo / Equipamento.
+const PA1_LOT_RECORDS_RANGE = { tab: 'PA1', range: 'D1:AK1000' };
+const PA1_LOT_FIELDS = {
+  lot: 'D',
+  previsto: 'F',
+  inicio: 'J',
+  cuba: 'O',
+  estrutura: 'P',
+  interior: 'Q',
+  envolventes: 'R',
+  geral: 'AK',
+};
+let pa1LotRecordsInflight = null;
+
+function lotColor(lotIndex) {
+  return LOT_COLORS[(lotIndex || 0) % LOT_COLORS.length];
+}
+
+// Etiqueta com o nome do lote no topo de cada coluna (ex: "93L"; nome completo no title).
+function lotShortName(lot) {
+  const text = String(lot || '').trim();
+  return text.match(/-\s*(\d{2}L)$/i)?.[1] || text;
+}
+
+function lotTag(record) {
+  return `<span class="lot-tag">${escapeHtml(lotShortName(record.lot))}</span>`;
+}
+
+// Devolve [{ lot, lotIndex, previsto, inicio, cuba, ..., geral }], um por lote.
+// De-dupe: várias chamadas no mesmo ciclo partilham o mesmo fetch.
+function fetchPa1LotRecords() {
+  if (pa1LotRecordsInflight) return pa1LotRecordsInflight;
+  pa1LotRecordsInflight = fetchSheetTable({ id: SHEET_CONFIG_DEFAULT.id, ...PA1_LOT_RECORDS_RANGE })
+    .then(table => {
+      const rows = table && Array.isArray(table.rows) ? table.rows : [];
+      const startIdx = columnLetterToIndex('D');
+      const offsets = {};
+      Object.keys(PA1_LOT_FIELDS).forEach(key => {
+        offsets[key] = columnLetterToIndex(PA1_LOT_FIELDS[key]) - startIdx;
+      });
+      const firstIndexByKey = new Map();
+      const records = [];
+      // rows[0] = linha 1 (cabeçalho) — com range o gviz usa headers=0
+      rows.slice(1).forEach(row => {
+        const lot = getValueFromRow(row, offsets.lot);
+        if (lot == null || String(lot).trim() === '') return;
+        const record = {};
+        Object.keys(offsets).forEach(key => {
+          record[key] = getValueFromRow(row, offsets[key]);
+        });
+        record.lot = String(lot).trim();
+        // Mesmo índice de cor usado em loadAndRenderModelo
+        const lotKey = normalizeModeloLote(record.lot);
+        if (!firstIndexByKey.has(lotKey)) firstIndexByKey.set(lotKey, records.length);
+        record.lotIndex = firstIndexByKey.get(lotKey);
+        records.push(record);
+      });
+      return records;
+    })
+    .finally(() => { pa1LotRecordsInflight = null; });
+  return pa1LotRecordsInflight;
+}
 
 // Modelo+Lote carregados de PA1!D e usados para destacar Planeamento.
 let currentModeloLotes = new Map();
@@ -2316,6 +2476,34 @@ function buildZonaPctCard(config, rowData) {
   return card;
 }
 
+// Card percentual dividido em N colunas (uma por lote).
+// `records` vem de fetchPa1LotRecords; com 0/1 lotes usa o card normal.
+function buildZonaLotPctCard(config, records) {
+  if (!Array.isArray(records) || records.length <= 1) {
+    const raw = records && records[0] ? records[0][config.lotField] : null;
+    return buildZonaPctCard(config, { __raw: raw });
+  }
+  const pcts = records.map(r => parseSheetPercentage(r[config.lotField]) || 0);
+  const cls = pcts.every(p => p === 100) ? 'done' : pcts.some(p => p > 0) ? 'going' : 'empty';
+  const card = document.createElement('div');
+  card.className = `zona-card ${cls}${config.tall ? ' tall' : ''}`;
+  const colsHtml = records.map((r, i) => {
+    const pct = pcts[i];
+    const col = bc(pct);
+    return `
+      <div class="lot-col" style="--lot-color:${lotColor(r.lotIndex)}" title="${escapeHtml(r.lot)}">${lotTag(r)}
+        <div class="zona-card-pct" style="color:${col || 'rgba(255,255,255,0.15)'}">${pct}%</div>
+        <div class="zona-card-bar">
+          <div class="zona-card-fill" style="width:${pct}%;background:${col || 'rgba(255,255,255,0.07)'}"></div>
+        </div>
+      </div>`;
+  }).join('');
+  card.innerHTML = `
+    <div class="zona-card-label">${escapeHtml(config.nome)}</div>
+    <div class="lot-cols" style="--cols:${records.length}">${colsHtml}</div>`;
+  return card;
+}
+
 function buildZonaListCard(config, items) {
   const list = Array.isArray(items) ? items : [];
   const cls = list.length > 0 ? 'going' : 'empty';
@@ -2415,6 +2603,17 @@ function renderZones(rowData) {
         const fresh = buildZonaSingleCard(config, v);
         card.replaceWith(fresh);
       }).catch(err => console.warn(`Falha a carregar valor para "${config.nome}":`, err));
+    } else if (config.lotField) {
+      // Card percentual por lote (PA1): divide-se em N colunas se houver vários lotes.
+      const cacheKey = 'lots|pa1';
+      const cached = ZONA_LIST_CACHE[cacheKey];
+      const card = buildZonaLotPctCard(config, cached || null);
+      zg.appendChild(card);
+
+      fetchPa1LotRecords().then(records => {
+        ZONA_LIST_CACHE[cacheKey] = records;
+        card.replaceWith(buildZonaLotPctCard(config, records));
+      }).catch(err => console.warn(`Falha a carregar pct para "${config.nome}":`, err));
     } else if (config.tab) {
       // Card percentual lido de um separador específico.
       const cacheKey = `pct|${config.tab}|${config.range || config.column || config.header}`;
@@ -2509,6 +2708,114 @@ function updateDeadline(startValue, dueValue) {
   if (unitEl) {
     unitEl.textContent = 'dias';
   }
+}
+
+/* ── MULTI-LOTE: Prazo, Início/Previsto e Evolução Global em N colunas ── */
+const prazoSingleEl = document.getElementById('prazoSingle');
+const prazoMultiEl = document.getElementById('prazoMulti');
+const detailsSectionEl = document.querySelector('.details-section');
+const MULTI_DATE_PLACEHOLDER = '--/--/----';
+
+function computeDeadline(startValue, dueValue) {
+  if (startValue == null || String(startValue).trim() === '' ||
+      dueValue == null || String(dueValue).trim() === '') {
+    return null;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const total = getWorkDaysCount(startValue, dueValue, true);
+  const used = getWorkDaysCount(startValue, today, true);
+  const remaining = getWorkDaysCount(today, dueValue, false);
+  if (total == null || used == null || remaining == null) return null;
+  const ratio = total > 0 ? Math.min(1, used / total) : 0;
+  return {
+    total, used, remaining, ratio,
+    pc: ratio >= .9 ? '#ff3b3b' : ratio >= .7 ? '#ffaa00' : '#00ff87',
+    folgaColor: remaining <= 1 ? '#ff3b3b' : remaining <= 3 ? '#ffaa00' : '#00ff87',
+  };
+}
+
+function setLotLayoutMulti(isMulti) {
+  if (prazoSingleEl) prazoSingleEl.hidden = isMulti;
+  if (prazoMultiEl) {
+    prazoMultiEl.hidden = !isMulti;
+    if (!isMulti) prazoMultiEl.innerHTML = '';
+  }
+  if (folgaEl) folgaEl.hidden = isMulti;
+  if (detailsSectionEl) detailsSectionEl.classList.toggle('is-multi', isMulti);
+  if (!isMulti) {
+    [dataInicioEl, dataPrevistaEl].forEach(el => {
+      if (el) el.classList.remove('lot-cols');
+    });
+  }
+}
+
+function renderMultiDeadline(records) {
+  if (!prazoMultiEl) return;
+  prazoMultiEl.style.setProperty('--cols', records.length);
+  prazoMultiEl.innerHTML = records.map(r => {
+    const d = computeDeadline(r.inicio, r.previsto);
+    const style = `--lot-color:${lotColor(r.lotIndex)}`;
+    if (!d) {
+      return `
+        <div class="lot-col" style="${style}" title="${escapeHtml(r.lot)}">${lotTag(r)}
+          <div class="prazo-numbers">
+            <div class="prazo-used" style="color:rgba(255,255,255,0.4)">-</div>
+            <div class="prazo-div">/</div>
+            <div class="prazo-total">-</div>
+          </div>
+          <div class="prazo-track"><div class="prazo-fill-bar" style="width:0%"></div></div>
+          <div class="prazo-lot-folga" style="color:rgba(255,255,255,0.4)">—</div>
+        </div>`;
+    }
+    return `
+      <div class="lot-col" style="${style}" title="${escapeHtml(r.lot)}">${lotTag(r)}
+        <div class="prazo-numbers">
+          <div class="prazo-used" style="color:${d.pc};text-shadow:0 0 40px ${d.pc}50">${d.used}</div>
+          <div class="prazo-div">/</div>
+          <div class="prazo-total">${d.total}</div>
+        </div>
+        <div class="prazo-track">
+          <div class="prazo-fill-bar" style="width:${d.ratio * 100}%;background:${d.pc}"></div>
+        </div>
+        <div class="prazo-lot-folga" style="color:${d.folgaColor}">${d.remaining} dias rest.</div>
+      </div>`;
+  }).join('');
+}
+
+function renderMultiDates(records) {
+  const fmt = value => {
+    if (value == null || String(value).trim() === '') return MULTI_DATE_PLACEHOLDER;
+    const formatted = formatSheetDate(value);
+    return formatted ? String(formatted).replace(/\s+/g, '') : MULTI_DATE_PLACEHOLDER;
+  };
+  [[dataInicioEl, 'inicio'], [dataPrevistaEl, 'previsto']].forEach(([el, key]) => {
+    if (!el) return;
+    el.classList.add('lot-cols');
+    el.style.setProperty('--cols', records.length);
+    el.innerHTML = records.map(r => `
+      <span class="lot-col" style="--lot-color:${lotColor(r.lotIndex)}" title="${escapeHtml(r.lot)}">${key === 'inicio' ? lotTag(r) : ''}<span>${escapeHtml(fmt(r[key]))}</span></span>`
+    ).join('');
+  });
+}
+
+function renderMultiEvolucao(records) {
+  if (!evEl) return;
+  evEl.classList.add('is-multi', 'lot-cols');
+  evEl.style.setProperty('--cols', records.length);
+  evEl.style.color = '';
+  evEl.style.textShadow = '';
+  evEl.innerHTML = records.map(r => {
+    const pct = parseSheetPercentage(r.geral) || 0;
+    const c = ec(pct);
+    return `<div class="lot-col" style="--lot-color:${lotColor(r.lotIndex)};color:${c};text-shadow:0 0 60px ${c}40" title="${escapeHtml(r.lot)}">${lotTag(r)}<span>${pct}%</span></div>`;
+  }).join('');
+}
+
+function resetSingleEvolucao() {
+  if (!evEl) return;
+  evEl.classList.remove('is-multi', 'lot-cols');
+  evEl.style.removeProperty('--cols');
 }
 
 function updateStatus(chaveValue) {
@@ -2658,7 +2965,24 @@ function refreshPs1Details() {
       modeloLote: { header: 'LOTE', column: 'D' },
       chaveProcura: { header: 'Chave de Procura', column: 'A' },
     }),
-  ]).then(([inicio, previsto, { modeloLote, chaveProcura }]) => {
+    fetchPa1LotRecords().catch(err => {
+      console.warn('Falha a carregar registos por lote do PA1:', err);
+      return [];
+    }),
+  ]).then(([inicio, previsto, { modeloLote, chaveProcura }, lotRecords]) => {
+    modelDataAvailable = modeloLote != null && String(modeloLote).trim() !== '';
+    loadAndRenderPaises();
+    updateStatus(chaveProcura);
+
+    // Vários lotes: Prazo, Início e Previsto divididos em N colunas
+    if (lotRecords.length > 1) {
+      setLotLayoutMulti(true);
+      renderMultiDeadline(lotRecords);
+      renderMultiDates(lotRecords);
+      return;
+    }
+    setLotLayoutMulti(false);
+
     const inicioFmt = inicio != null && String(inicio).trim() !== ''
       ? formatSheetDate(inicio) || DATE_PLACEHOLDER
       : DATE_PLACEHOLDER;
@@ -2668,13 +2992,9 @@ function refreshPs1Details() {
     renderText(dataInicioEl, inicioFmt, DATE_PLACEHOLDER);
     renderText(dataPrevistaEl, previstoFmt, DATE_PLACEHOLDER);
     updateDeadline(inicio, previsto);
-
-    modelDataAvailable = modeloLote != null && String(modeloLote).trim() !== '';
-    loadAndRenderPaises();
-
-    updateStatus(chaveProcura);
   }).catch(err => {
     console.warn('Falha a carregar datas do PA1 ou dados do PS2:', err);
+    setLotLayoutMulti(false);
     modelDataAvailable = false;
     loadAndRenderPaises();
     renderText(dataInicioEl, DATE_PLACEHOLDER, DATE_PLACEHOLDER);
@@ -2684,8 +3004,11 @@ function refreshPs1Details() {
   });
 }
 
+let lastSheetRow = null;
+
 function renderSheetData(sheetRow) {
   if (!sheetRow) return;
+  lastSheetRow = sheetRow;
 
   // Datas vêm do PA1 e modelo/lote vêm do PS2 (refreshPs1Details)
   // Evolução Global vem do PS2!AK (refreshPs1Fields)
@@ -2700,6 +3023,21 @@ async function fetchPs1Summary() {
 }
 
 function refreshPs1Fields() {
+  return fetchPa1LotRecords().catch(err => {
+    console.warn('Falha a carregar registos por lote do PA1:', err);
+    return [];
+  }).then(lotRecords => {
+    // Vários lotes: Evolução Global dividida em N colunas
+    if (lotRecords.length > 1) {
+      renderMultiEvolucao(lotRecords);
+      return;
+    }
+    resetSingleEvolucao();
+    return refreshSingleEvolucao();
+  });
+}
+
+function refreshSingleEvolucao() {
   return fetchPs1Summary().then(geral => {
     const geralPct = parseSheetPercentage(geral);
     if (geralPct == null) {
@@ -2718,9 +3056,14 @@ function initializeSheetWatcher() {
   // Watcher principal: PS2 (fonte primária — ao mudar dispara re-render completo)
   const stopPs1 = watchSheetRow(SHEET_CONFIG, renderSheetData, SHEET_POLL_INTERVAL);
 
+  // Watcher PA1 (lotes + campos por lote): actualiza Modelo / Equipamento e,
+  // como o número de lotes define as colunas, re-renderiza zonas/prazo/datas/evolução.
   const stopModelos = watchSheetTab(
-    { id: SHEET_CONFIG_DEFAULT.id, ...MODELO_LOTES_RANGE },
-    () => loadAndRenderModelo(),
+    { id: SHEET_CONFIG_DEFAULT.id, ...PA1_LOT_RECORDS_RANGE },
+    () => {
+      loadAndRenderModelo();
+      if (lastSheetRow) renderSheetData(lastSheetRow);
+    },
     SHEET_POLL_INTERVAL
   );
 
