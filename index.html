@@ -1135,6 +1135,14 @@ function isSheetPercentageComplete(value) {
   return numeric === 1 || numeric === 100;
 }
 
+function normalizePriorityKey(value) {
+  return String(value == null ? '' : value)
+    .trim()
+    .toUpperCase()
+    .replace(/^P/, '')
+    .replace(/_/g, '.');
+}
+
 function parseSheetDate(value) {
   if (value == null) {
     return null;
@@ -2134,6 +2142,27 @@ async function fetchZonaListValues(source) {
       .filter(index => index < table.cols.length);
 
     if (source.mode === 'completed-priority-headers') {
+      const historyTable = await fetchSheetTable({
+        id: SHEET_CONFIG_DEFAULT.id,
+        tab: 'PA1',
+        range: 'DW1:FV18',
+      });
+      const historyPriorities = new Set();
+      if (Array.isArray(historyTable.cols) && Array.isArray(historyTable.rows)) {
+        const historyPercentageColumns = PA1_PRIORITY_HEADERS
+          .map((_, index) => index * 2 + 1)
+          .filter(index => index < historyTable.cols.length);
+        for (const row of historyTable.rows.slice(1)) {
+          for (const percentageColumn of historyPercentageColumns) {
+            if (!isSheetPercentageComplete(getValueFromRow(row, percentageColumn))) continue;
+            const priority = getValueFromRow(row, percentageColumn - 1);
+            if (priority != null && String(priority).trim() !== '') {
+              historyPriorities.add(normalizePriorityKey(priority));
+            }
+          }
+        }
+      }
+
       const values = [];
       for (const percentageColumn of percentageColumns) {
         const completed = table.rows.slice(1).some(row =>
@@ -2142,7 +2171,7 @@ async function fetchZonaListValues(source) {
         if (!completed) continue;
 
         const priorityHeader = PA1_PRIORITY_HEADERS[(percentageColumn - 1) / 2];
-        if (!priorityHeader) continue;
+        if (!priorityHeader || historyPriorities.has(normalizePriorityKey(priorityHeader))) continue;
         values.push(priorityHeader.replace(/_(?=\d+$)/, '.'));
       }
       return values;
