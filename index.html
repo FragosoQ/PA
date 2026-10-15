@@ -286,6 +286,11 @@ main {
   font-size: clamp(20px, 2.5vw, 42px);
   white-space: pre-line;
 }
+.id-modelo-lot {
+  display: block;
+  color: var(--lot-color, #fff);
+  white-space: nowrap;
+}
 
 .id-lote {
   font-size: clamp(22px, 3.6vh, 46px);
@@ -468,6 +473,9 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.25;
+}
+.zona-card-list-item.has-lot-color {
+  color: var(--lot-color);
 }
 
 /* Item destacado: corresponde ao modelo+lote actualmente em produção */
@@ -1950,7 +1958,7 @@ const ZONA_CONFIGS = [
     type: 'list',
     listSource: {
       tab: 'PA1',
-      range: 'DW1:FV18',
+      range: 'D1:FV18',
       mode: 'completed-priorities',
       hideHeader: true,
       gridLayout: { cols: 4, rows: 3, flow: 'column' },
@@ -1963,7 +1971,7 @@ const ZONA_CONFIGS = [
     type: 'list',
     listSource: {
       tab: 'PA1',
-      range: 'AL1:CK8',
+      range: 'D1:CK8',
       mode: 'completed-priority-headers',
       hideHeader: true,
     },
@@ -1975,12 +1983,16 @@ const PA1_PRIORITY_HEADERS = [
   'P7_1', 'P7_2', 'P8', 'P9', 'P10', 'P11_1', 'P11_2', 'P11_3',
   'P12_1', 'P12_2', 'P12_3', 'P13_1', 'P13_2', 'P13_3', 'V', 'FE', 'ESP',
 ];
+const LOT_COLORS = ['#8fe7ff', '#d5b6ff', '#ffd28f', '#a8edb2', '#ffaec1', '#aebdff', '#ffe98f', '#a5e8d5'];
+const PA1_RANGE_START_COLUMN = columnLetterToIndex('D');
+const PA1_AVAILABLE_START_COLUMN = columnLetterToIndex('AL') - PA1_RANGE_START_COLUMN;
+const PA1_HISTORY_START_COLUMN = columnLetterToIndex('DW') - PA1_RANGE_START_COLUMN;
 
 // Cache simples para a lista de lotes — partilhado pelo refresh periódico
 const ZONA_LIST_CACHE = {};
 
 // Modelo+Lote carregados de PA1!D e usados para destacar Planeamento.
-let currentModeloLotes = new Set();
+let currentModeloLotes = new Map();
 
 // Normaliza uma string para comparação de "modelo - lote":
 // minúsculas, sem espaços extra à volta do "-", sem acentos.
@@ -2136,56 +2148,79 @@ async function fetchZonaListValues(source) {
       return [];
     }
 
-    // PA1 uses fixed priority/% pairs; gviz can return blank cells for merged headers.
-    const percentageColumns = PA1_PRIORITY_HEADERS
-      .map((_, index) => index * 2 + 1)
-      .filter(index => index < table.cols.length);
+    const lotIndices = new Map();
+    table.rows.slice(1).forEach(row => {
+      const lot = getValueFromRow(row, 0);
+      if (lot != null && String(lot).trim() !== '' && !lotIndices.has(normalizeModeloLote(lot))) {
+        lotIndices.set(normalizeModeloLote(lot), lotIndices.size);
+      }
+    });
 
     if (source.mode === 'completed-priority-headers') {
       const historyTable = await fetchSheetTable({
         id: SHEET_CONFIG_DEFAULT.id,
         tab: 'PA1',
-        range: 'DW1:FV18',
+        range: 'D1:FV18',
       });
-      const historyPriorities = new Set();
-      if (Array.isArray(historyTable.cols) && Array.isArray(historyTable.rows)) {
-        const historyPercentageColumns = PA1_PRIORITY_HEADERS
-          .map((_, index) => index * 2 + 1)
-          .filter(index => index < historyTable.cols.length);
+      const historyPrioritiesByLot = new Map();
+      if (historyTable && Array.isArray(historyTable.cols) && Array.isArray(historyTable.rows)) {
         for (const row of historyTable.rows.slice(1)) {
-          for (const percentageColumn of historyPercentageColumns) {
+          const lotKey = normalizeModeloLote(getValueFromRow(row, 0));
+          if (!lotKey) continue;
+          const priorities = new Set();
+          for (let index = 0; index < PA1_PRIORITY_HEADERS.length; index += 1) {
+            const percentageColumn = PA1_HISTORY_START_COLUMN + index * 2 + 1;
+            if (percentageColumn >= historyTable.cols.length) continue;
             if (!isSheetPercentageComplete(getValueFromRow(row, percentageColumn))) continue;
             const priority = getValueFromRow(row, percentageColumn - 1);
             if (priority != null && String(priority).trim() !== '') {
-              historyPriorities.add(normalizePriorityKey(priority));
+              priorities.add(normalizePriorityKey(priority));
             }
           }
+          historyPrioritiesByLot.set(lotKey, priorities);
         }
       }
 
       const values = [];
-      for (const percentageColumn of percentageColumns) {
-        const completed = table.rows.slice(1).some(row =>
-          isSheetPercentageComplete(getValueFromRow(row, percentageColumn))
-        );
-        if (!completed) continue;
+      for (const row of table.rows.slice(1)) {
+        const lot = getValueFromRow(row, 0);
+        const lotKey = normalizeModeloLote(lot);
+        if (!lotKey) continue;
+        const lotIndex = lotIndices.get(lotKey) || 0;
+        const historyPriorities = historyPrioritiesByLot.get(lotKey) || new Set();
+        for (let index = 0; index < PA1_PRIORITY_HEADERS.length; index += 1) {
+          const percentageColumn = PA1_AVAILABLE_START_COLUMN + index * 2 + 1;
+          if (percentageColumn >= table.cols.length ||
+              !isSheetPercentageComplete(getValueFromRow(row, percentageColumn))) continue;
 
-        const priorityHeader = PA1_PRIORITY_HEADERS[(percentageColumn - 1) / 2];
-        if (!priorityHeader || historyPriorities.has(normalizePriorityKey(priorityHeader))) continue;
-        values.push(priorityHeader.replace(/_(?=\d+$)/, '.'));
+          const priorityHeader = PA1_PRIORITY_HEADERS[index];
+          if (!priorityHeader || historyPriorities.has(normalizePriorityKey(priorityHeader))) continue;
+          values.push({
+            value: priorityHeader.replace(/_(?=\d+$)/, '.'),
+            lotIndex,
+          });
+        }
       }
       return values;
     }
 
     const values = [];
-    for (let rowIndex = 1; rowIndex < table.rows.length; rowIndex += 1) {
-      const row = table.rows[rowIndex];
-      for (const percentageColumn of percentageColumns) {
+    for (const row of table.rows.slice(1)) {
+      const lot = getValueFromRow(row, 0);
+      const lotKey = normalizeModeloLote(lot);
+      if (!lotKey) continue;
+      const lotIndex = lotIndices.get(lotKey) || 0;
+      for (let index = 0; index < PA1_PRIORITY_HEADERS.length; index += 1) {
+        const percentageColumn = PA1_HISTORY_START_COLUMN + index * 2 + 1;
+        if (percentageColumn >= table.cols.length) continue;
         if (!isSheetPercentageComplete(getValueFromRow(row, percentageColumn))) continue;
         const priority = getValueFromRow(row, percentageColumn - 1);
         if (priority == null || String(priority).trim() === '') continue;
         const priorityText = String(priority).trim().replace(',', '.');
-        values.push(/^p/i.test(priorityText) ? priorityText : `P${priorityText}`);
+        values.push({
+          value: /^p/i.test(priorityText) ? priorityText : `P${priorityText}`,
+          lotIndex,
+        });
       }
     }
     return values;
@@ -2293,7 +2328,13 @@ function buildZonaListCard(config, items) {
     ? list.map(item => {
         const text = (item && typeof item === 'object') ? item.value : item;
         const dim = !!(item && typeof item === 'object' && item.dim);
-        return `<div class="zona-card-list-item${dim ? ' dim' : ''}">${escapeHtml(text)}</div>`;
+        const lotIndex = item && typeof item === 'object' && Number.isInteger(item.lotIndex)
+          ? item.lotIndex
+          : null;
+        const lotColor = lotIndex == null ? '' : LOT_COLORS[lotIndex % LOT_COLORS.length];
+        const lotClass = lotColor ? ' has-lot-color' : '';
+        const lotStyle = lotColor ? ` style="--lot-color:${lotColor}"` : '';
+        return `<div class="zona-card-list-item${dim ? ' dim' : ''}${lotClass}"${lotStyle}>${escapeHtml(text)}</div>`;
       }).join('')
     : '<div class="zona-card-list-empty">Sem dados</div>';
 
@@ -2497,9 +2538,20 @@ function loadAndRenderModelo() {
       .map(row => getValueFromRow(row, 0))
       .filter(value => value != null && String(value).trim() !== '')
       .map(value => String(value).trim());
-    currentModeloLotes = new Set(values.map(normalizeModeloLote));
+    currentModeloLotes = new Map();
+    values.forEach((value, index) => {
+      const lotKey = normalizeModeloLote(value);
+      if (!currentModeloLotes.has(lotKey)) {
+        currentModeloLotes.set(lotKey, index);
+      }
+    });
     modelEl.classList.toggle('is-list', values.length > 1);
-    modelEl.textContent = values.length ? values.join('\n') : MODEL_PLACEHOLDER;
+    modelEl.innerHTML = values.length
+      ? values.map(value => {
+          const lotIndex = currentModeloLotes.get(normalizeModeloLote(value)) || 0;
+          return `<span class="id-modelo-lot" style="--lot-color:${LOT_COLORS[lotIndex % LOT_COLORS.length]}">${escapeHtml(value)}</span>`;
+        }).join('')
+      : MODEL_PLACEHOLDER;
     const lotes = [...new Set(values
       .map(value => value.match(/-\s*(\d{2}L)$/i)?.[1])
       .filter(Boolean))];
@@ -2511,7 +2563,7 @@ function loadAndRenderModelo() {
     applyActiveHighlight();
   }).catch(error => {
     console.warn('Falha a carregar valores de LOTE em PA1:', error);
-    currentModeloLotes = new Set();
+    currentModeloLotes = new Map();
     modelEl.classList.remove('is-list');
     modelEl.textContent = MODEL_PLACEHOLDER;
     if (loteEl) loteEl.textContent = 'Sem Lote';
