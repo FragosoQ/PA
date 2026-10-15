@@ -1915,8 +1915,8 @@ const statusEl = document.getElementById('statusLabel');
 const zg = document.getElementById('zonasGrid');
 
 const ZONA_CONFIGS = [
-  { nome: 'Cuba', tab: 'PS2', header: 'CUBA', column: 'O' },
-  { nome: 'Estrutura', tab: 'PS2', header: 'ESTRUTURA', column: 'P' },
+  { nome: 'Cuba', tab: 'PA1', header: 'CUBA', column: 'O', range: 'O1:O10' },
+  { nome: 'Estrutura', tab: 'PA1', header: 'ESTRUTURA', column: 'P', range: 'P1:P10' },
   {
     nome: 'Planeamento',
     type: 'list',
@@ -1944,8 +1944,8 @@ const ZONA_CONFIGS = [
       gridLayout: { cols: 4, rows: 3, flow: 'column' },
     },
   },
-  { nome: 'Envolventes', tab: 'PS2', header: 'Envolventes', column: 'R' },
-  { nome: 'Interior', tab: 'PS2', header: 'INTERIOR', column: 'Q' },
+  { nome: 'Envolventes', tab: 'PA1', header: 'Envolventes', column: 'R', range: 'R1:R10' },
+  { nome: 'Interior', tab: 'PA1', header: 'INTERIOR', column: 'Q', range: 'Q1:Q10' },
   {
     nome: 'Prioridades Disponíveis',
     type: 'list',
@@ -2055,6 +2055,17 @@ async function fetchSecondaryRowFields(tab, fields) {
     out[key] = idx >= 0 ? getValueFromRow(firstRow, idx) : null;
   });
   return out;
+}
+
+async function fetchSecondaryRangeValue(tab, range) {
+  const table = await fetchSheetTable({ id: SHEET_CONFIG_DEFAULT.id, tab, range });
+  if (!table || !Array.isArray(table.rows)) return null;
+
+  for (const row of table.rows) {
+    const value = getValueFromRow(row, 0);
+    if (value != null && String(value).trim() !== '') return value;
+  }
+  return null;
 }
 
 // Lê valores de várias colunas em várias linhas de um separador.
@@ -2334,19 +2345,22 @@ function renderZones(rowData) {
         card.replaceWith(fresh);
       }).catch(err => console.warn(`Falha a carregar valor para "${config.nome}":`, err));
     } else if (config.tab) {
-      // Card percentual lido de um separador específico (ex: PS2)
-      const cacheKey = `pct|${config.tab}|${config.column || config.header}`;
+      // Card percentual lido de um separador específico.
+      const cacheKey = `pct|${config.tab}|${config.range || config.column || config.header}`;
       const cached = ZONA_LIST_CACHE[cacheKey];
       // Render imediato com o que está em cache (evita pisca)
       const card = buildZonaPctCard(config, cached != null ? { __raw: cached } : null);
       zg.appendChild(card);
 
-      fetchSecondaryRowFields(config.tab, {
-        v: { header: config.header, column: config.column },
-      }).then(({ v }) => {
-        ZONA_LIST_CACHE[cacheKey] = v;
+      const valuePromise = config.range
+        ? fetchSecondaryRangeValue(config.tab, config.range)
+        : fetchSecondaryRowFields(config.tab, {
+          v: { header: config.header, column: config.column },
+        }).then(({ v }) => v);
+      valuePromise.then(value => {
+        ZONA_LIST_CACHE[cacheKey] = value;
         // Constrói card fresco com o valor recebido
-        const fresh = buildZonaPctCard(config, { __raw: v });
+        const fresh = buildZonaPctCard(config, { __raw: value });
         card.replaceWith(fresh);
       }).catch(err => console.warn(`Falha a carregar pct para "${config.nome}":`, err));
     } else {
