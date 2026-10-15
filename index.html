@@ -282,6 +282,10 @@ main {
   line-height: 1;
   margin-bottom: clamp(4px, 0.8vh, 8px);
 }
+.id-modelo.is-list {
+  font-size: clamp(20px, 2.5vw, 42px);
+  white-space: pre-line;
+}
 
 .id-lote {
   font-size: clamp(22px, 3.6vh, 46px);
@@ -1896,7 +1900,7 @@ const FALLBACK_EV = 46;
 const evEl = document.getElementById('evNum');
 const modelEl = document.querySelector('.id-modelo');
 let modelDataAvailable = false;
-const MODEL_FALLBACK = modelEl ? modelEl.textContent.trim() : 'MWS715 SDS EXD DRD';
+const MODEL_PLACEHOLDER = '—';
 const loteEl = document.querySelector('.id-lote');
 const LOTE_FALLBACK = loteEl ? loteEl.textContent.trim() : 'Lote · 26L_1';
 const paisInfoEl = document.querySelector('.id-pais-info');
@@ -2451,6 +2455,35 @@ const PAIS_PLACEHOLDER = '- · -';
 // Lido por range explícito: o gviz omite linhas vazias quando se pede o separador
 // inteiro, pelo que o índice da linha deixa de corresponder ao número da linha na Sheet.
 const PAIS_RANGE = { tab: 'montagemEditável', range: 'L22:M26' };
+const MODELO_LOTES_RANGE = { tab: 'PA1', range: 'D1:D1000' };
+
+function loadAndRenderModelo() {
+  if (!modelEl) return Promise.resolve();
+
+  return fetchSheetTable({ id: SHEET_CONFIG_DEFAULT.id, ...MODELO_LOTES_RANGE }).then(table => {
+    const rows = table && Array.isArray(table.rows) ? table.rows : [];
+    const header = rows.length ? getValueFromRow(rows[0], 0) : null;
+    if (normalizeString(header) !== 'lote') {
+      throw new Error('Cabeçalho LOTE não encontrado em PA1!D1:D1000');
+    }
+
+    const values = rows.slice(1)
+      .map(row => getValueFromRow(row, 0))
+      .filter(value => value != null && String(value).trim() !== '')
+      .map(value => String(value).trim());
+    modelEl.classList.toggle('is-list', values.length > 1);
+    modelEl.textContent = values.length ? values.join('\n') : MODEL_PLACEHOLDER;
+    const lote = values.length ? values[0].match(/-\s*(\d{2}L)$/i)?.[1] : null;
+    if (loteEl) {
+      loteEl.innerHTML = lote ? `Lote &nbsp;·&nbsp; ${escapeHtml(lote)}` : 'Sem Lote';
+    }
+  }).catch(error => {
+    console.warn('Falha a carregar valores de LOTE em PA1:', error);
+    modelEl.classList.remove('is-list');
+    modelEl.textContent = MODEL_PLACEHOLDER;
+    if (loteEl) loteEl.textContent = 'Sem Lote';
+  });
+}
 
 function setPaisEmpty() {
   if (!paisContainerEl) return;
@@ -2531,7 +2564,6 @@ function loadAndRenderPaises() {
 // Modelo/Lote (PS2!D2), Início (PS2!J2), Previsto (PS2!F2) e estado (PS2!A2).
 function refreshPs1Details() {
   const DATE_PLACEHOLDER = '-- / -- / ----';
-  const MODEL_PLACEHOLDER = '—';
 
   // Separa "MWS500 SDS - 87L" → { modelo: "MWS500 SDS", lote: "87L" }.
   // Se não terminar em "<2 dígitos>L", devolve { modelo: <string toda>, lote: null }.
@@ -2564,13 +2596,7 @@ function refreshPs1Details() {
 
     const { modelo, lote } = parseModeloLote(modeloLote);
     modelDataAvailable = Boolean(modelo);
-    renderText(modelEl, modelo || MODEL_PLACEHOLDER, MODEL_PLACEHOLDER);
     loadAndRenderPaises();
-    if (loteEl) {
-      loteEl.innerHTML = lote
-        ? `Lote &nbsp;·&nbsp; ${escapeHtml(lote)}`
-        : 'Sem Lote';
-    }
     // Actualiza referência usada pelas listas para destacar o item activo
     currentModeloLote = (modelo && lote) ? `${modelo} - ${lote}` : null;
     applyActiveHighlight();
@@ -2583,10 +2609,6 @@ function refreshPs1Details() {
     renderText(dataInicioEl, DATE_PLACEHOLDER, DATE_PLACEHOLDER);
     renderText(dataPrevistaEl, DATE_PLACEHOLDER, DATE_PLACEHOLDER);
     updateDeadline(null, null);
-    renderText(modelEl, MODEL_PLACEHOLDER, MODEL_PLACEHOLDER);
-    if (loteEl) {
-      loteEl.innerHTML = 'Sem Lote';
-    }
     updateStatus(null);
     currentModeloLote = null;
     applyActiveHighlight();
@@ -2630,6 +2652,12 @@ function initializeSheetWatcher() {
   // Watcher principal: PS2 (fonte primária — ao mudar dispara re-render completo)
   const stopPs1 = watchSheetRow(SHEET_CONFIG, renderSheetData, SHEET_POLL_INTERVAL);
 
+  const stopModelos = watchSheetTab(
+    { id: SHEET_CONFIG_DEFAULT.id, ...MODELO_LOTES_RANGE },
+    () => loadAndRenderModelo(),
+    SHEET_POLL_INTERVAL
+  );
+
   // Watcher dedicado: montagemEditável (países) — dispara só re-render do bloco país
   const stopPaises = watchSheetTab(
     { tab: 'montagemEditável' },
@@ -2639,6 +2667,7 @@ function initializeSheetWatcher() {
 
   window.addEventListener('beforeunload', () => {
     stopPs1();
+    stopModelos();
     stopPaises();
   });
 }
