@@ -701,17 +701,6 @@ main {
 
 /* Evolução Global */
 .globe-section { container-type: inline-size; }
-#evNum.is-multi {
-  width: 100%;
-  padding: 0 clamp(12px, 1.6vw, 22px);
-  box-sizing: border-box;
-  font-size: min(18vh, calc(88cqw / var(--cols, 1) / 2.1)) !important;
-  letter-spacing: 0 !important;
-}
-#evNum.is-multi .lot-col {
-  align-items: center;
-  padding-top: clamp(6px, 1vh, 12px);
-}
 
 /* Prazo */
 .prazo-multi .lot-col { align-items: center; gap: clamp(4px, 0.6vh, 8px); }
@@ -2090,9 +2079,9 @@ const ZONA_LIST_CACHE = {};
 
 // ── Registos por lote (PA1, uma linha por MODELO / EQUIPAMENTO) ──
 // Quando há mais do que um lote em PA1!D, Cuba/Estrutura/Envolventes/Interior,
-// Evolução Global, Prazo, Início e Previsto dividem-se em N colunas, lidas da
-// mesma linha de cada lote e pela mesma ordem da lista de Modelo / Equipamento.
-const PA1_LOT_RECORDS_RANGE = { tab: 'PA1', range: 'D1:AK1000' };
+// Prazo, Início e Previsto dividem-se em N colunas, lidas pela ordem da lista
+// de Modelo / Equipamento.
+const PA1_LOT_RECORDS_RANGE = { tab: 'PA1', range: 'D1:FY1000' };
 const PA1_LOT_FIELDS = {
   lot: 'D',
   previsto: 'F',
@@ -2101,7 +2090,7 @@ const PA1_LOT_FIELDS = {
   estrutura: 'P',
   interior: 'Q',
   envolventes: 'R',
-  geral: 'AK',
+  geral: 'FY',
 };
 let pa1LotRecordsInflight = null;
 
@@ -2123,24 +2112,21 @@ function lotTag(record) {
 // De-dupe: várias chamadas no mesmo ciclo partilham o mesmo fetch.
 function fetchPa1LotRecords() {
   if (pa1LotRecordsInflight) return pa1LotRecordsInflight;
-  pa1LotRecordsInflight = fetchSheetTable({ id: SHEET_CONFIG_DEFAULT.id, ...PA1_LOT_RECORDS_RANGE })
-    .then(table => {
-      const rows = table && Array.isArray(table.rows) ? table.rows : [];
-      const startIdx = columnLetterToIndex('D');
-      const offsets = {};
-      Object.keys(PA1_LOT_FIELDS).forEach(key => {
-        offsets[key] = columnLetterToIndex(PA1_LOT_FIELDS[key]) - startIdx;
-      });
+  const columns = {};
+  Object.keys(PA1_LOT_FIELDS).forEach(key => {
+    columns[key] = {
+      header: key === 'geral' ? 'GERAL(T)' : null,
+      column: PA1_LOT_FIELDS[key],
+    };
+  });
+  pa1LotRecordsInflight = fetchSecondaryRowsRange('PA1', columns, 2, 1000)
+    .then(rows => {
       const firstIndexByKey = new Map();
       const records = [];
-      // rows[0] = linha 1 (cabeçalho) — com range o gviz usa headers=0
-      rows.slice(1).forEach(row => {
-        const lot = getValueFromRow(row, offsets.lot);
+      rows.forEach(row => {
+        const lot = row.lot;
         if (lot == null || String(lot).trim() === '') return;
-        const record = {};
-        Object.keys(offsets).forEach(key => {
-          record[key] = getValueFromRow(row, offsets[key]);
-        });
+        const record = { ...row };
         record.lot = String(lot).trim();
         // Mesmo índice de cor usado em loadAndRenderModelo
         const lotKey = normalizeModeloLote(record.lot);
@@ -2825,23 +2811,18 @@ function renderMultiDates(records) {
   });
 }
 
-function renderMultiEvolucao(records) {
-  if (!evEl) return;
-  evEl.classList.add('is-multi', 'lot-cols');
-  evEl.style.setProperty('--cols', records.length);
-  evEl.style.color = '';
-  evEl.style.textShadow = '';
-  evEl.innerHTML = records.map(r => {
-    const pct = parseSheetPercentage(r.geral) || 0;
-    const c = ec(pct);
-    return `<div class="lot-col" style="--lot-color:${lotColor(r.lotIndex)};color:${c};text-shadow:0 0 60px ${c}40" title="${escapeHtml(r.lot)}">${lotTag(r)}<span>${pct}%</span></div>`;
-  }).join('');
-}
-
 function resetSingleEvolucao() {
   if (!evEl) return;
   evEl.classList.remove('is-multi', 'lot-cols');
   evEl.style.removeProperty('--cols');
+}
+
+function showUnavailableEvolucao() {
+  if (!evEl) return;
+  resetSingleEvolucao();
+  evEl.textContent = '—';
+  evEl.style.color = 'rgba(255,255,255,0.45)';
+  evEl.style.textShadow = 'none';
 }
 
 function updateStatus(chaveValue) {
@@ -2999,8 +2980,9 @@ function refreshPs1Details() {
     modelDataAvailable = modeloLote != null && String(modeloLote).trim() !== '';
     loadAndRenderPaises();
     updateStatus(chaveProcura);
+    refreshPs1Fields(modeloLote, lotRecords);
 
-    // Vários lotes: Prazo, Início e Previsto divididos em N colunas
+    // Vários lotes: Prazo, Início e Previsto divididos em N colunas.
     if (lotRecords.length > 1) {
       setLotLayoutMulti(true);
       renderMultiDeadline(lotRecords);
@@ -3027,6 +3009,7 @@ function refreshPs1Details() {
     renderText(dataPrevistaEl, DATE_PLACEHOLDER, DATE_PLACEHOLDER);
     updateDeadline(null, null);
     updateStatus(null);
+    refreshPs1Fields(null, []);
   });
 }
 
@@ -3037,45 +3020,39 @@ function renderSheetData(sheetRow) {
   lastSheetRow = sheetRow;
 
   // Datas vêm do PA1 e modelo/lote vêm do PS2 (refreshPs1Details)
-  // Evolução Global vem do PS2!AK (refreshPs1Fields)
+  // Evolução Global vem de PA1!FY (GERAL(T), refreshPs1Fields)
   // Países vêm de montagemEditável (refrescados pelo seu próprio watcher — ver loadAndRenderPaises)
   refreshPs1Details();
-  refreshPs1Fields();
   renderZones(sheetRow);
 }
 
-async function fetchPs1Summary() {
-  return fetchSecondaryRangeValue('PA1', 'AK1:AK1000');
-}
+function refreshPs1Fields(currentLot, lotRecords) {
+  resetSingleEvolucao();
+  const currentLotName = currentLot == null ? '' : String(currentLot).trim();
+  if (!currentLotName) {
+    console.warn('[evolução] lote em curso não encontrado em PS2!LOTE.');
+    showUnavailableEvolucao();
+    return;
+  }
 
-function refreshPs1Fields() {
-  return fetchPa1LotRecords().catch(err => {
-    console.warn('Falha a carregar registos por lote do PA1:', err);
-    return [];
-  }).then(lotRecords => {
-    // Vários lotes: Evolução Global dividida em N colunas
-    if (lotRecords.length > 1) {
-      renderMultiEvolucao(lotRecords);
-      return;
-    }
-    resetSingleEvolucao();
-    return refreshSingleEvolucao();
-  });
-}
+  const currentRecord = lotRecords.find(record =>
+    normalizeModeloLote(record.lot) === normalizeModeloLote(currentLotName)
+  );
+  if (!currentRecord) {
+    console.warn(`[evolução] lote em curso "${currentLotName}" não encontrado em PA1!D.`);
+    showUnavailableEvolucao();
+    return;
+  }
 
-function refreshSingleEvolucao() {
-  return fetchPs1Summary().then(geral => {
-    const geralPct = parseSheetPercentage(geral);
-    if (geralPct == null) {
-      console.warn('[evolução] valor de GERAL (PA1!AK) não parseável:', geral);
-    } else {
-      console.log('[evolução] GERAL (PA1!AK) =', geral, '→', geralPct, '%');
-    }
-    updateEvolucao(geralPct != null ? geralPct : 0);
-  }).catch(err => {
-    console.warn('Falha a carregar evolução do PA1:', err);
-    updateEvolucao(0);
-  });
+  const geralPct = parseSheetPercentage(currentRecord.geral);
+  if (geralPct == null) {
+    console.warn(`[evolução] valor de GERAL(T) (PA1!FY) não parseável para "${currentLotName}":`, currentRecord.geral);
+    showUnavailableEvolucao();
+    return;
+  }
+
+  console.log(`[evolução] GERAL(T) (PA1!FY) de "${currentLotName}" =`, currentRecord.geral, '→', geralPct, '%');
+  updateEvolucao(geralPct);
 }
 
 function initializeSheetWatcher() {
