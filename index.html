@@ -2039,10 +2039,13 @@ const ZONA_CONFIGS = [
       tab: 'soldaduraEditávelMulti',
       header: 'LOTE',
       column: 'D',
-      // Lotes cuja coluna K (FIM SOLDADURA / ACABAMENTO) já está preenchida
-      // ficam visualmente esbatidos (concluídos).
-      dimHeader: 'FIM SOLDADURA / ACABAMENTO',
-      dimColumn: 'K',
+      // O lote fica esbatido quando PA1!FY (GERAL(T)) chega a 100%.
+      dimTab: 'PA1',
+      dimRange: 'A1:FY1000',
+      dimKeyColumn: 'FX',
+      dimHeader: 'GERAL(T)',
+      dimColumn: 'FY',
+      dimIsComplete: true,
       hideHeader: true,
       limit: 5,
     },
@@ -2433,9 +2436,28 @@ async function fetchZonaListValues(source) {
   if (colIndex < 0 || !Array.isArray(table.rows)) {
     return [];
   }
+  const dimTable = source.dimTab
+    ? await fetchSheetTable({
+      id: SHEET_CONFIG_DEFAULT.id,
+      tab: source.dimTab,
+      ...(source.dimRange ? { range: source.dimRange } : {}),
+    })
+    : table;
   const dimColIndex = (source.dimColumn || source.dimHeader)
-    ? findSheetCell(table, source.dimHeader, source.dimColumn)
+    ? findSheetCell(dimTable, source.dimHeader, source.dimColumn)
     : -1;
+  const dimByKey = new Map();
+  if (source.dimTab && source.dimKeyColumn && dimColIndex >= 0 && Array.isArray(dimTable.rows)) {
+    const dimKeyIndex = findSheetCell(dimTable, source.dimKeyHeader, source.dimKeyColumn);
+    if (dimKeyIndex >= 0) {
+      dimTable.rows.forEach(row => {
+        const key = normalizeModeloLote(getValueFromRow(row, dimKeyIndex));
+        if (key && !dimByKey.has(key)) {
+          dimByKey.set(key, getValueFromRow(row, dimColIndex));
+        }
+      });
+    }
+  }
   const limit = Math.max(1, source.limit || 5);
   const values = [];
   for (let i = 0; i < table.rows.length && values.length < limit; i += 1) {
@@ -2443,8 +2465,12 @@ async function fetchZonaListValues(source) {
     if (v != null && String(v).trim() !== '') {
       const item = { value: String(v).trim(), dim: false };
       if (dimColIndex >= 0) {
-        const dimVal = getValueFromRow(table.rows[i], dimColIndex);
-        item.dim = dimVal != null && String(dimVal).trim() !== '';
+        const dimVal = source.dimTab
+          ? dimByKey.get(normalizeModeloLote(v))
+          : getValueFromRow(table.rows[i], dimColIndex);
+        item.dim = source.dimIsComplete
+          ? isSheetPercentageComplete(dimVal)
+          : dimVal != null && String(dimVal).trim() !== '';
       }
       values.push(item);
     }
