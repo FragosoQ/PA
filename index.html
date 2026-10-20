@@ -3443,9 +3443,9 @@ updateTime(); setInterval(updateTime, 1000);
   function applyHeight() {
     const total = zonas.getBoundingClientRect().height;
     if (total <= 0) return;
-    // Split: 65% prazo / 25% details — soma 90% do zonas-panel (10% libertado)
+    // Split: 65% prazo / 28% details — soma 93% do zonas-panel (7% libertado)
     prazo.style.height = `${total * 0.65}px`;
-    details.style.height = `${total * 0.25}px`;
+    details.style.height = `${total * 0.28}px`;
   }
 
   // Aplica imediatamente e ao redimensionar
