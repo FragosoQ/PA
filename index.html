@@ -1187,20 +1187,21 @@ function findRowByKey(table, keyHeader, keyValue) {
   return table.rows[0] || null;
 }
 
-function parseSheetPercentage(value) {
+function parseSheetPercentage(value, round = true) {
   if (value == null) {
     return null;
   }
 
   if (typeof value === 'number') {
     const pct = Math.abs(value) <= 1 ? value * 100 : value;
-    return Math.round(pct);
+    return round ? Math.round(pct) : pct;
   }
 
   const str = String(value).trim();
   const percentMatch = str.match(/^(-?\d+(?:[\.,]\d+)?)\s*%$/);
   if (percentMatch) {
-    return Math.round(Number(percentMatch[1].replace(',', '.')));
+    const pct = Number(percentMatch[1].replace(',', '.'));
+    return round ? Math.round(pct) : pct;
   }
 
   const numericMatch = str.replace(/\s+/g, '').replace(',', '.').match(/(-?\d+(?:\.\d+)?)/);
@@ -1209,7 +1210,7 @@ function parseSheetPercentage(value) {
   }
   const numeric = Number(numericMatch[1]);
   const pct = numeric <= 1 ? numeric * 100 : numeric;
-  return Math.round(pct);
+  return round ? Math.round(pct) : pct;
 }
 
 function isSheetPercentageComplete(value) {
@@ -3028,6 +3029,22 @@ function renderSheetData(sheetRow) {
 
 function refreshPs1Fields(currentLot, lotRecords) {
   resetSingleEvolucao();
+  if (lotRecords.length > 1) {
+    const percentages = lotRecords
+      .map(record => parseSheetPercentage(record.geral, false))
+      .filter(Number.isFinite);
+    if (percentages.length === 0) {
+      console.warn('[evolução] não há valores GERAL(T) (PA1!FY) válidos para calcular a média.');
+      showUnavailableEvolucao();
+      return;
+    }
+
+    const average = Math.round(percentages.reduce((sum, value) => sum + value, 0) / percentages.length);
+    console.log(`[evolução] média de GERAL(T) (PA1!FY) de ${percentages.length} lotes =`, average, '%');
+    updateEvolucao(average);
+    return;
+  }
+
   const currentLotName = currentLot == null ? '' : String(currentLot).trim();
   if (!currentLotName) {
     console.warn('[evolução] lote em curso não encontrado em PS2!LOTE.');
