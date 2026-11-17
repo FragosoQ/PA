@@ -2354,23 +2354,45 @@ async function fetchZonaListValues(source) {
       return values;
     }
 
+    // Histórico: para cada célula "%" a 100%, mostra o cabeçalho (linha 1)
+    // da coluna imediatamente à esquerda (ex: ED5 = 100% → EC1 = "P1").
+    // O gviz tipa cada coluna pela maioria dos valores: numa coluna de números
+    // (ex: EC com "1"), o texto do cabeçalho ("P1") chega a null. Por isso a
+    // linha 1 é pedida à parte, onde todas as células são texto.
+    let headerRow = table.rows[0];
+    const rangeMatch = String(source.range || '').match(/^([A-Z]+)\d+:([A-Z]+)\d+$/i);
+    if (rangeMatch) {
+      try {
+        const headerTable = await fetchSheetTable({
+          id: SHEET_CONFIG_DEFAULT.id,
+          tab: source.tab,
+          range: `${rangeMatch[1]}1:${rangeMatch[2]}1`,
+        });
+        if (headerTable && Array.isArray(headerTable.rows) && headerTable.rows[0]) {
+          headerRow = headerTable.rows[0];
+        }
+      } catch (err) {
+        console.warn('Falha a carregar cabeçalho do Histórico:', err);
+      }
+    }
+    const percentColumns = [];
+    for (let col = PA1_HISTORY_START_COLUMN + 1; col < table.cols.length; col += 1) {
+      const headerText = String(getValueFromRow(headerRow, col) ?? '').trim();
+      if (headerText !== '%') continue;
+      const priorityHeader = String(getValueFromRow(headerRow, col - 1) ?? '').trim();
+      if (!priorityHeader) continue;
+      percentColumns.push({ col, label: priorityHeader.replace(/_(?=\d+$)/, '.') });
+    }
+
     const values = [];
     for (const row of table.rows.slice(1)) {
       const lot = getValueFromRow(row, 0);
       const lotKey = normalizeModeloLote(lot);
       if (!lotKey) continue;
       const lotIndex = lotIndices.get(lotKey) || 0;
-      for (let index = 0; index < PA1_PRIORITY_HEADERS.length; index += 1) {
-        const percentageColumn = PA1_HISTORY_START_COLUMN + index * 2 + 1;
-        if (percentageColumn >= table.cols.length) continue;
-        if (!isSheetPercentageComplete(getValueFromRow(row, percentageColumn))) continue;
-        const priority = getValueFromRow(row, percentageColumn - 1);
-        if (priority == null || String(priority).trim() === '') continue;
-        const priorityText = String(priority).trim().replace(',', '.');
-        values.push({
-          value: /^p/i.test(priorityText) ? priorityText : `P${priorityText}`,
-          lotIndex,
-        });
+      for (const { col, label } of percentColumns) {
+        if (!isSheetPercentageComplete(getValueFromRow(row, col))) continue;
+        values.push({ value: label, lotIndex });
       }
     }
     return values;
