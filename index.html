@@ -686,6 +686,40 @@ main {
   min-width: 0;
 }
 
+.ev-lots {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, .8vh, 8px);
+  margin-top: clamp(4px, 1vh, 12px);
+}
+.ev-lots.show { display: flex; }
+.ev-lots-title {
+  font-size: clamp(10px, 1.3vh, 14px);
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+}
+.ev-lots-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(4px, .8vh, 8px);
+}
+.ev-lot-pill {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(12px, 1.6vh, 17px);
+  font-weight: 700;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  padding: 2px 12px;
+  border-radius: 999px;
+  color: var(--lot-color, #fff);
+  border: 1px solid color-mix(in srgb, var(--lot-color, #fff) 45%, transparent);
+  background: color-mix(in srgb, var(--lot-color, #fff) 10%, transparent);
+}
+
 .lot-tag {
   display: block;
   font-family: 'Barlow Condensed', sans-serif;
@@ -1029,6 +1063,10 @@ footer {
         <div style="font-size:clamp(14px,1.8vh,20px);font-weight:700;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.75);">Evolução Global</div>
         <div id="evNum" style="font-family:'Bebas Neue',sans-serif;font-size:clamp(140px,22vh,340px);line-height:.85;letter-spacing:-2px;">46%</div>
         <div id="statusLabel" style="font-size:clamp(15px,2vh,22px);letter-spacing:4px;color:rgba(255,255,255,0.75);text-transform:uppercase;">Em Curso · ON</div>
+        <div class="ev-lots" id="evLots">
+          <div class="ev-lots-title">Prioridades em Curso</div>
+          <div class="ev-lots-list" id="evLotsList"></div>
+        </div>
       </div>
 
       <!-- PRAZO -->
@@ -2847,6 +2885,20 @@ function renderMultiDates(records) {
   });
 }
 
+// Etiquetas "N · XX%" por lote (GERAL(T), PA1!FY) por baixo da Evolução Global.
+function renderEvolucaoLots(lotRecords) {
+  const wrap = document.getElementById('evLots');
+  const list = document.getElementById('evLotsList');
+  if (!wrap || !list) return;
+  const records = Array.isArray(lotRecords) ? lotRecords : [];
+  list.innerHTML = records.map((r, i) => {
+    const pct = parseSheetPercentage(r.geral, false);
+    const pctText = Number.isFinite(pct) ? `${Math.round(pct)}%` : '—';
+    return `<span class="ev-lot-pill" style="--lot-color:${lotColor(r.lotIndex)}" title="${escapeHtml(r.lot)}">${i + 1} · ${pctText}</span>`;
+  }).join('');
+  wrap.classList.toggle('show', records.length > 0);
+}
+
 function resetSingleEvolucao() {
   if (!evEl) return;
   evEl.classList.remove('is-multi', 'lot-cols');
@@ -3064,6 +3116,7 @@ function renderSheetData(sheetRow) {
 
 function refreshPs1Fields(currentLot, lotRecords) {
   resetSingleEvolucao();
+  renderEvolucaoLots(lotRecords);
   if (lotRecords.length > 1) {
     const percentages = lotRecords
       .map(record => parseSheetPercentage(record.geral, false))
