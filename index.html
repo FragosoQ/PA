@@ -721,6 +721,20 @@ main {
   box-shadow: inset 0 0 6px rgba(143, 231, 255, 0.08);
 }
 
+#evNum.is-multi {
+  width: 100%;
+  letter-spacing: 0 !important;
+  column-gap: clamp(12px, 2vw, 32px);
+}
+#evNum.is-multi .ev-lot-col { align-items: center; }
+#evNum.is-multi .ev-lot-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(70px, 13vh, 220px);
+  line-height: .85;
+  letter-spacing: -2px;
+  white-space: nowrap;
+}
+
 .lot-tag {
   display: block;
   font-family: 'Barlow Condensed', sans-serif;
@@ -2900,6 +2914,24 @@ function renderEvolucaoLots(lotRecords) {
   wrap.classList.toggle('show', records.length > 0);
 }
 
+// Vários lotes: uma coluna por lote, cada uma com a sua % (sem média).
+function renderMultiEvolucao(lotRecords) {
+  if (!evEl) return;
+  evEl.classList.add('is-multi', 'lot-cols');
+  evEl.style.setProperty('--cols', lotRecords.length);
+  evEl.style.color = '';
+  evEl.style.textShadow = 'none';
+  evEl.innerHTML = lotRecords.map(r => {
+    const pct = parseSheetPercentage(r.geral, false);
+    const ok = Number.isFinite(pct);
+    const v = ok ? Math.round(pct) : null;
+    const color = ok ? ec(v) : 'rgba(255,255,255,0.45)';
+    const shadow = ok ? `0 0 60px ${color}40` : 'none';
+    console.log(`[evolução] GERAL(T) (PA1!FY) de "${r.lot}" =`, r.geral, '→', v, '%');
+    return `<span class="lot-col ev-lot-col" style="--lot-color:${lotColor(r.lotIndex)}" title="${escapeHtml(r.lot)}">${lotTag(r)}<span class="ev-lot-num" style="color:${color};text-shadow:${shadow}">${ok ? v + '%' : '—'}</span></span>`;
+  }).join('');
+}
+
 function resetSingleEvolucao() {
   if (!evEl) return;
   evEl.classList.remove('is-multi', 'lot-cols');
@@ -3123,14 +3155,12 @@ function refreshPs1Fields(currentLot, lotRecords) {
       .map(record => parseSheetPercentage(record.geral, false))
       .filter(Number.isFinite);
     if (percentages.length === 0) {
-      console.warn('[evolução] não há valores GERAL(T) (PA1!FY) válidos para calcular a média.');
+      console.warn('[evolução] não há valores GERAL(T) (PA1!FY) válidos.');
       showUnavailableEvolucao();
       return;
     }
 
-    const average = Math.round(percentages.reduce((sum, value) => sum + value, 0) / percentages.length);
-    console.log(`[evolução] média de GERAL(T) (PA1!FY) de ${percentages.length} lotes =`, average, '%');
-    updateEvolucao(average);
+    renderMultiEvolucao(lotRecords);
     return;
   }
 
